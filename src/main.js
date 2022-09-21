@@ -205,14 +205,6 @@ fs.stat(path.resolve(opts.config), (err, stats) => {
           Bucket: "mbtiles",
           Key: "tiles.mbtiles"
         };
-        const streamToString = (stream) => {
-          const chunks = [];
-          return new Promise((resolve, reject) => {
-            stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-            stream.on('error', (err) => reject(err));
-            stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-          });
-        };
 
         const s3Client = new clientS3.S3({
           endpoint: "https://nyc3.digitaloceanspaces.com",
@@ -229,9 +221,6 @@ fs.stat(path.resolve(opts.config), (err, stats) => {
           try {
             const stream = fs.createWriteStream(bucketParams.Key);
             stream.on('finish', () => startWithMBTiles(bucketParams.Key));
-            console.log('Test')
-            console.log(process.env.SPACES_KEY)
-            console.log('Fuck')
             const response = await s3Client.send(new clientS3.GetObjectCommand(bucketParams))
             return response.Body.pipe(stream)
           } catch (err) {
