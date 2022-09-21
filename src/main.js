@@ -12,6 +12,8 @@ const MBTiles = require('@mapbox/mbtiles');
 
 const packageJson = require('../package');
 
+const clientS3 = require("@aws-sdk/client-s3");
+
 const args = process.argv;
 if (args.length >= 3 && args[2][0] !== '-') {
   args.splice(2, 0, '--mbtiles');
@@ -159,9 +161,9 @@ const startWithMBTiles = (mbtilesFile) => {
       } else {
         console.log(`WARN: MBTiles not in "openmaptiles" format. Serving raw data only...`);
         config['data'][(info.id || 'mbtiles')
-                           .replace(/\//g, '_')
-                           .replace(/:/g, '_')
-                           .replace(/\?/g, '_')] = {
+          .replace(/\//g, '_')
+          .replace(/:/g, '_')
+          .replace(/\?/g, '_')] = {
           "mbtiles": path.basename(mbtilesFile)
         };
       }
@@ -196,13 +198,50 @@ fs.stat(path.resolve(opts.config), (err, stats) => {
         console.log(`No MBTiles specified, using ${mbtiles}`);
         return startWithMBTiles(mbtiles);
       } else {
-        const url = 'https://github.com/maptiler/tileserver-gl/releases/download/v1.3.0/zurich_switzerland.mbtiles';
-        const filename = 'zurich_switzerland.mbtiles';
-        const stream = fs.createWriteStream(filename);
-        console.log(`No MBTiles found`);
-        console.log(`[DEMO] Downloading sample data (${filename}) from ${url}`);
-        stream.on('finish', () => startWithMBTiles(filename));
-        return request.get(url).pipe(stream);
+
+
+
+        const bucketParams = {
+          Bucket: "mbtiles",
+          Key: "tiles.mbtiles"
+        };
+        const streamToString = (stream) => {
+          const chunks = [];
+          return new Promise((resolve, reject) => {
+            stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+            stream.on('error', (err) => reject(err));
+            stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+          });
+        };
+
+        const s3Client = new clientS3.S3({
+          endpoint: "https://nyc3.digitaloceanspaces.com",
+          region: "us-east-1",
+          credentials: {
+            accessKeyId: process.env.SPACES_KEY,
+            secretAccessKey: process.env.SPACES_SECRET
+          }
+        });
+
+
+
+        const runFromS3 = async () => {
+          try {
+            const stream = fs.createWriteStream(bucketParams.Key);
+            stream.on('finish', () => startWithMBTiles(bucketParams.Key));
+            console.log('Test')
+            console.log(process.env.SPACES_KEY)
+            console.log('Fuck')
+            const response = await s3Client.send(new clientS3.GetObjectCommand(bucketParams))
+            return response.Body.pipe(stream)
+          } catch (err) {
+            console.log("Error", err);
+          }
+
+        }
+
+        return runFromS3()
+
       }
     }
     if (mbtiles) {
